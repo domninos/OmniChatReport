@@ -8,6 +8,7 @@ database:
 
 # redis
 redis:
+  enable: true # make false to not use redis
   host: ""
   port: 0
   user: "default"

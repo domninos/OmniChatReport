@@ -4,3 +4,16 @@ main: net.omni.chatreport.OmniChatReport
 api-version: '1.21'
 authors: [ domninos ]
 description: Licensing library API for OMC Plugins only.
+
+commands:
+  report:
+    usage: /<command> <player>
+    description: Main command for OmniChatReport.
+    aliases:
+      - ocr
+  mute:
+    usage: /<command> <player> <time> <reason>
+    description: Main command for muting.
+  unmute:
+    usage: /<command> <player>
+    description: Main command for unmuting.

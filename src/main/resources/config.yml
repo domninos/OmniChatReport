@@ -1,0 +1,68 @@
+prefix: "&7[&bOCR&7]"
+
+database:
+  user: "root"
+  password: "admin"
+  host: "localhost"
+  port: 3306
+
+# redis
+redis:
+  host: ""
+  port: 0
+  user: "default"
+  password: ""
+
+
+gui:
+  name: "&9Chat Report" # inventory name
+  slots: 27 # multiple of 9. the number of slots in the gui of reports (SHOULD MATCH item_rows)
+
+  ### EACH ROW SHOULD ONLY BE 9 ITEMS.
+  # one hashtag = 1 item
+  # one item from gui.items = 1 item
+  # each slot should not be adjacent, always add space
+  item_rows: # possible items: [SWEARING, ADVERTISING, DOMAINS, LINKS]
+    - "# # # # # # # # #" # = empty slot or glass pane
+    - "# SWEARING # ADVERTISING # DOMAINS # LINKS #" # dynamic names, put item things under gui.items
+    - "# # # # # # # # #"
+
+  hashtag_glass: false # default - false | if # represents glass pane
+
+  ###
+  # add more items, just use the items.<NAME> on gui.item_rows
+  # items.<NAME>.type should ONLY be from
+  # https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/Material.html
+  ###
+  items:
+    HASHTAG: # THIS SHOULD NOT BE DELETED !!! PLUGIN WILL NOT WORK
+      type: BLACK_STAINED_GLASS_PANE
+      name: ''
+
+    SWEARING:
+      command: '/mute {player} 1d "Swearing"'
+      type: YELLOW_WOOL
+      name: '&3&lSwearing'
+      lore:
+        - '&bReport {player} for swearing'
+
+    ADVERTISING:
+      command: '/mute {player} 3h "Advertisement"'
+      type: BLACK_WOOL
+      name: '&b&lAdvertising'
+      lore:
+        - '&bReport {player} for advertisement'
+
+    DOMAINS:
+      command: '/mute {player} 1d "Sending domains"'
+      type: WHITE_WOOL
+      name: '&9&lDomain'
+      lore:
+        - '&bReport {player} for sending domains'
+
+    LINKS:
+      command: '/mute {player} 1h "Sending links"'
+      type: GREEN_WOOL
+      name: '&e&lLinks'
+      lore:
+        - '&bReport {player} for sending links'

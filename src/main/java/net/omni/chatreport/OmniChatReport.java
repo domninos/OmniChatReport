@@ -3,6 +3,7 @@ package net.omni.chatreport;
 import net.omni.chatreport.commands.MuteCommand;
 import net.omni.chatreport.commands.ReportCommand;
 import net.omni.chatreport.db.DatabaseHandler;
+import net.omni.chatreport.db.RedisHandler;
 import net.omni.chatreport.listeners.GUIListener;
 import net.omni.chatreport.managers.GUIManager;
 import net.omni.chatreport.managers.MuteManager;
@@ -24,10 +25,10 @@ public final class OmniChatReport extends JavaPlugin {
 
     private MuteManager muteManager;
 
+    private RedisHandler redisHandler;
+
     /*
     TODO:
-        /report <player>
-            make GUI customizable
         store recent chat messages of the reported player database (should be at least 1 day)
         use AI-based / advanced filtering systems
             detect: Swearing, Advertising (IP Addresses, domains, links etc.) store matching and things on config.yml
@@ -37,6 +38,12 @@ public final class OmniChatReport extends JavaPlugin {
         use mySQL or Redis for chat storing
          - add fallback punishments.yml
         add command autocomplete (especially in /report <player> <reason> <-)
+        check mute on join (redis)
+        finish muting, unmuting
+        finish database handling
+        make sure redis is working
+        setup bungee for multi-server
+
      */
 
 
@@ -55,6 +62,9 @@ public final class OmniChatReport extends JavaPlugin {
         new ReportCommand(this).register();
         new MuteCommand(this).register();
 
+        if (useRedis())
+            this.redisHandler = new RedisHandler(this);
+
         databaseHandler = new DatabaseHandler(this);
         databaseHandler.loadDatabase();
 
@@ -68,9 +78,21 @@ public final class OmniChatReport extends JavaPlugin {
     public void onDisable() {
         guiManager.flush();
 
+        if (useRedis())
+            redisHandler.close();
+
         // TODO databaseSave
+        databaseHandler.closeDB();
 
         sendConsole("&cSuccessfully disabled " + getName() + "v-" + getDescription().getVersion());
+    }
+
+    public boolean useRedis() {
+        return getConfig().getBoolean("redis.enable");
+    }
+
+    public RedisHandler getRedisHandler() {
+        return redisHandler;
     }
 
     public MuteManager getMuteManager() {

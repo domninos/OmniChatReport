@@ -46,7 +46,7 @@ public class MuteCommand implements CommandExecutor {
 
             String reason = builder.toString().trim();
 
-            if (plugin.getMuteManager().mutePlayer(target, timeString, reason)) {
+            if (plugin.getMuteManager().mutePlayer(sender.getName(), target, timeString, reason)) {
                 long timeMillis = TimeUtil.parseDuration(timeString);
                 String formattedTime = TimeUtil.getTimeRemainingString(timeMillis);
 

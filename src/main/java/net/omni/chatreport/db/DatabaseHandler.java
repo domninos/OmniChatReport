@@ -73,7 +73,17 @@ public class DatabaseHandler {
         });
     }
 
-    public void insert(String playerName, long millisTime, String reason) {
+    /*
+    Always use Redis for live checks — MySQL is slower and doesn’t need to be queried often.
+
+    Use HikariCP for MySQL connections — only when inserting/updating data.
+
+    Use Redis expiration instead of scheduling tasks — no need for Bukkit runnables.
+
+    Multi-server network → use Redis pub/sub to notify other servers of mute/unmute instantly.
+     */
+
+    public void insert(String issuer, String playerName, long millisTime, String reason) {
         // TODO
         String sql = "INSERT INTO '" + TABLE_NAME
                 + "'(uuid, name, reason, issued_by, expires_at) VALUES (?, ?, ?, ?, ?)";
@@ -81,6 +91,13 @@ public class DatabaseHandler {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try (Connection connection = getConnection();
                  PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                statement.setString(1, playerName);
+                statement.setString(2, reason);
+                statement.setString(3, issuer);
+                statement.setLong(4, millisTime);
+
+                statement.executeUpdate();
 
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -90,10 +107,18 @@ public class DatabaseHandler {
 
     public void remove(String playerName) {
         // TODO
+
+        if (plugin.useRedis()) {
+            // TODO
+        }
     }
 
     public boolean isMuted(String playerName) {
         // TODO
+
+        if (plugin.useRedis()) {
+            // TODO
+        }
 
         return false;
     }

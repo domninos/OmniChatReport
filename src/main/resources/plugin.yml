@@ -1,0 +1,6 @@
+name: OmniChatReport
+version: '1.0.0'
+main: net.omni.chatreport.OmniChatReport
+api-version: '1.21'
+authors: [ domninos ]
+description: Licensing library API for OMC Plugins only.

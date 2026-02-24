@@ -36,14 +36,16 @@ public class TimeUtil {
 
         StringBuilder result = new StringBuilder();
 
-        if (weeks > 0) result.append(weeks).append("w ");
-        if (days > 0) result.append(days).append("d ");
-        if (hours > 0) result.append(hours).append("h ");
-        if (minutes > 0) result.append(minutes).append("m ");
-        if (seconds > 0) result.append(seconds).append("s ");
+        if (weeks > 0) result.append(weeks).append(" week(s) ");
+        if (days > 0) result.append(days).append(" day(s) ");
+        if (hours > 0) result.append(hours).append(" hour(s) ");
+        if (minutes > 0) result.append(minutes).append(" minute(s) ");
+        if (seconds > 0) result.append(seconds).append(" second(s) ");
+
+        if (result.isEmpty())
+            result.append("-");
 
         return result.toString().trim();
-
     }
 
     public static long parseDuration(String input) {
@@ -52,15 +54,13 @@ public class TimeUtil {
 
         input = input.toLowerCase();
 
-        long totalMillis = 0;
+        long totalMillis = System.currentTimeMillis();
         StringBuilder number = new StringBuilder();
 
         for (char c : input.toCharArray()) {
-
             if (Character.isDigit(c)) {
                 number.append(c);
             } else {
-
                 if (number.isEmpty())
                     throw new IllegalArgumentException("Invalid time format");
 
@@ -90,8 +90,8 @@ public class TimeUtil {
             }
         }
 
-        if (!number.isEmpty())
-            throw new IllegalArgumentException("Time format must end with a unit");
+        if (!number.isEmpty() || totalMillis == 0)
+            totalMillis = Long.parseLong(number.toString());
 
         return totalMillis;
     }

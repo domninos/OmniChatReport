@@ -8,6 +8,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 public class PlayerListener implements Listener {
 
@@ -22,7 +23,15 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
 
         if (plugin.getMuteManager().isMuted(player))
-            plugin.getMuteManager().loadMuted(player.getName());
+            plugin.getMuteManager().loadMuted(player.getName()); // TODO issuer gets messaged = no no
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+
+        if (plugin.getMuteManager().isMuted(player))
+            plugin.getMuteManager().saveToDatabase(player);
     }
 
     @EventHandler

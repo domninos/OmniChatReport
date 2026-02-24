@@ -60,7 +60,7 @@ public class MuteManager {
 
         // check if redis
         if (plugin.useRedis())
-            plugin.getRedisHandler().mutePlayer(issuer, player.getName(), millisTime, reason);
+            plugin.getRedisHandler().mutePlayer(issuer, player.getName(), millisTime, reason, plugin.checkServer());
 
         return true;
     }

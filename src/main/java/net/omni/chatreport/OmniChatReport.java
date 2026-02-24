@@ -27,22 +27,6 @@ public final class OmniChatReport extends JavaPlugin {
 
     private RedisHandler redisHandler;
 
-    /*
-    TODO:
-        store recent chat messages of the reported player database (should be at least 1 day) - use redisClient.setex (may expiration to)
-        use AI-based / advanced filtering systems
-            detect: Swearing, Advertising (IP Addresses, domains, links etc.) store matching and things on config.yml
-        if inappropriate:
-            apply punishment (e.g mute)
-        sync multi-server - if player reported on a diff server, punishment should work
-        use mySQL or Redis for chat storing
-         - add fallback punishments.yml
-        add command autocomplete (especially in /report <player> <reason> <-)
-        setup bungee for multi-server
-        check for all async threads. make threads just for redis and database.
-
-     */
-
     @Override
     public void onDisable() {
         guiManager.flush();
@@ -84,6 +68,7 @@ public final class OmniChatReport extends JavaPlugin {
 
         sendConsole("&aSuccessfully enabled " + getName() + " v-" + getDescription().getVersion());
     }
+
 
     public void updateConfig() {
         prefix = getConfig().getString("prefix");
@@ -128,4 +113,7 @@ public final class OmniChatReport extends JavaPlugin {
         return databaseHandler;
     }
 
+    public String checkServer() {
+        return server;
+    }
 }

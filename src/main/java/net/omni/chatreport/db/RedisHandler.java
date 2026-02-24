@@ -40,7 +40,7 @@ public class RedisHandler {
                     public void onMessage(String channel, String message) {
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             String[] parts = message.split(":");
-                            // mute:name:expiry:reason:issuer
+                            // mute:name:expiry:reason:issuer:fromServer
 
                             String name = parts[1];
                             Player player = Bukkit.getPlayer(name);
@@ -54,11 +54,15 @@ public class RedisHandler {
                                 String timeString = parts[2];
                                 String reason = parts[3];
                                 String issuer = parts[4];
+                                String fromServer = parts[5];
 
-                                // TODO this gets executed again since it's on the same server.
-                                plugin.getMuteManager().mutePlayer(issuer, player, timeString, reason);
+                                if (!plugin.checkServer().equals(fromServer))
+                                    plugin.getMuteManager().mutePlayer(issuer, player, timeString, reason);
                             } else if (parts[0].equals("unmute")) {
-                                plugin.getMuteManager().unmutePlayer(player);
+                                String fromServer = parts[2];
+
+                                if (!plugin.checkServer().equals(fromServer))
+                                    plugin.getMuteManager().unmutePlayer(player);
                             } else {
                                 plugin.sendConsole("&cUnknown Redis action: " + parts[0]);
                             }
@@ -75,14 +79,14 @@ public class RedisHandler {
         return redisClient.exists("mute:" + name);
     }
 
-    public void unmute(String name) {
-        redisClient.publish(CHANNEL, "unmute:" + name);
+    public void unmute(String name, String fromServer) {
+        redisClient.publish(CHANNEL, "unmute:" + name + ":" + fromServer);
         redisClient.del("mute:" + name);
     }
 
-    public void mutePlayer(String issuer, String name, long millisTime, String reason) {
-        redisClient.set("mute:" + name, millisTime + ":" + reason);
-        redisClient.publish(CHANNEL, "mute:" + name + ":" + millisTime + ":" + reason + ":" + issuer);
+    public void mutePlayer(String issuer, String name, long millisTime, String reason, String server) {
+        redisClient.set("mute:" + name, millisTime + ":" + reason + ":" + server);
+        redisClient.publish(CHANNEL, "mute:" + name + ":" + millisTime + ":" + reason + ":" + issuer + ":" + server);
     }
 
     public void close() {

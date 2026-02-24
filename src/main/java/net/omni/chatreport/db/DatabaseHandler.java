@@ -2,6 +2,7 @@ package net.omni.chatreport.db;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import net.omni.chatreport.MutedPlayer;
 import net.omni.chatreport.OmniChatReport;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -15,6 +16,8 @@ public class DatabaseHandler {
 
     private final OmniChatReport plugin;
     private HikariDataSource dataSource;
+
+    // TODO make a new Thread dedicated for database
 
     public DatabaseHandler(OmniChatReport plugin) {
         this.plugin = plugin;
@@ -35,7 +38,7 @@ public class DatabaseHandler {
         }
 
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database + "?useSSL=false&serverTimezone=UTC");
+        config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database + "?useSSL=false");
         config.setUsername(username);
         config.setPassword(password);
 
@@ -52,7 +55,7 @@ public class DatabaseHandler {
                 statement.execute("""
                             CREATE TABLE IF NOT EXISTS mutes (
                                 id INT AUTO_INCREMENT PRIMARY KEY,
-                                name VARCHAR(36) NOT NULL,
+                                name VARCHAR(36) NOT NULL UNIQUE,
                                 reason VARCHAR(200) NOT NULL,
                                 issued_by VARCHAR(36) NOT NULL,
                                 expires_at BIGINT NOT NULL,
@@ -81,13 +84,8 @@ public class DatabaseHandler {
         return this.dataSource.getConnection();
     }
 
-    /*
-    Use Redis expiration instead of scheduling tasks — no need for Bukkit runnables.
-     */
-
     public void loadPlayer(String name) {
-        String sql = "SELECT reason, issued_by, expires_at FROM "
-                + TABLE_NAME + " WHERE name = ? LIMIT 1";
+        String sql = "SELECT reason, issued_by, expires_at FROM " + TABLE_NAME + " WHERE name = ? LIMIT 1";
 
         Player player = Bukkit.getPlayer(name);
 
@@ -104,11 +102,10 @@ public class DatabaseHandler {
                     String issuer = rs.getString("issued_by");
                     long expires_at = rs.getLong("expires_at");
 
-                    if (System.currentTimeMillis() < expires_at) {
+                    if (expires_at <= System.currentTimeMillis())
                         delete(name);
-                    } else {
+                    else
                         plugin.getMuteManager().mutePlayer(issuer, player, expires_at, reason);
-                    }
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
@@ -135,9 +132,13 @@ public class DatabaseHandler {
     }
 
     // SHOULD NOT BE USED FREQUENTLY
-    public void insert(String issuer, String playerName, long millisTime, String reason) {
-        String sql = "INSERT IGNORE INTO " + TABLE_NAME +
-                "(name, reason, issued_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?)";
+    public void insert(MutedPlayer mutedPlayer) {
+        String issuer = mutedPlayer.issuer();
+        String playerName = mutedPlayer.playerName();
+        long millisTime = mutedPlayer.expiry();
+        String reason = mutedPlayer.reason();
+
+        String sql = "INSERT IGNORE INTO " + TABLE_NAME + "(name, reason, issued_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?)";
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try (Connection connection = getConnection();
@@ -151,7 +152,6 @@ public class DatabaseHandler {
                 statement.setLong(5, System.currentTimeMillis());
 
                 statement.executeUpdate();
-
             } catch (SQLException e) {
                 e.printStackTrace();
             }

@@ -44,6 +44,7 @@ public class UnmuteCommand implements CommandExecutor {
             }
 
             plugin.getMuteManager().unmutePlayer(target);
+            plugin.sendMessage(target, "&aYou are now unmuted.");
         } else
             sendHelp(sender);
 

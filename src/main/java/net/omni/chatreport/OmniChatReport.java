@@ -27,16 +27,17 @@ public final class OmniChatReport extends JavaPlugin {
 
     private RedisHandler redisHandler;
 
+    // TODO save cache to database batchUpdate
+
     @Override
     public void onDisable() {
-        guiManager.flush();
-        muteManager.flush();
+        databaseHandler.closeDB();
 
         if (useRedis())
             redisHandler.close();
 
-        // TODO databaseSave
-        databaseHandler.closeDB();
+        guiManager.flush();
+        muteManager.flush();
 
         sendConsole("&cSuccessfully disabled " + getName() + "v-" + getDescription().getVersion());
     }
@@ -68,7 +69,6 @@ public final class OmniChatReport extends JavaPlugin {
 
         sendConsole("&aSuccessfully enabled " + getName() + " v-" + getDescription().getVersion());
     }
-
 
     public void updateConfig() {
         prefix = getConfig().getString("prefix");

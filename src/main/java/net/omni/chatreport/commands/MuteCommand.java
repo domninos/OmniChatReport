@@ -51,10 +51,10 @@ public class MuteCommand implements CommandExecutor {
                 String formattedTime = TimeUtil.getTimeRemainingString(timeMillis);
 
                 plugin.sendMessage(sender, "&aSuccessfully muted " + target.getName()
-                        + " for " + reason + ". Remaining: " + formattedTime);
+                        + " for " + reason + ". Duration: " + formattedTime);
 
                 // broadcast
-                plugin.sendMessage(target, "&cYou have been muted by " + sender.getName() + ".");
+                plugin.sendMessage(target, "&cYou have been muted by " + sender.getName() + " for " + formattedTime + ".");
                 plugin.sendMessage(target, "&cReason: " + reason);
             }
         }

@@ -1,18 +1,20 @@
 prefix: "&7[&bOCR&7]"
+server: "Test" # the server name for multi-server support
 
 database:
-  user: "root"
+  username: "root"
   password: "admin"
   host: "localhost"
   port: 3306
+  database: "omnichatreports"
 
 # redis
 redis:
   enable: true # make false to not use redis
-  host: ""
-  port: 0
+  host: "" # remove
+  port: 0  # remove
   user: "default"
-  password: ""
+  password: "" # remove
 
 
 gui:
@@ -41,29 +43,29 @@ gui:
       name: ''
 
     SWEARING:
-      command: '/mute {player} 1d "Swearing"'
+      command: '/mute {player} 1d Swearing'
       type: YELLOW_WOOL
       name: '&3&lSwearing'
       lore:
-        - '&bReport {player} for swearing'
+        - '&bReport player for swearing'
 
     ADVERTISING:
-      command: '/mute {player} 3h "Advertisement"'
+      command: '/mute {player} 3h Advertisement'
       type: BLACK_WOOL
       name: '&b&lAdvertising'
       lore:
-        - '&bReport {player} for advertisement'
+        - '&bReport player for advertisement'
 
     DOMAINS:
-      command: '/mute {player} 1d "Sending domains"'
+      command: '/mute {player} 1d Sending domains'
       type: WHITE_WOOL
       name: '&9&lDomain'
       lore:
-        - '&bReport {player} for sending domains'
+        - '&bReport player for sending domains'
 
     LINKS:
-      command: '/mute {player} 1h "Sending links"'
+      command: '/mute {player} 1h Sending links'
       type: GREEN_WOOL
       name: '&e&lLinks'
       lore:
-        - '&bReport {player} for sending links'
+        - '&bReport player for sending links'

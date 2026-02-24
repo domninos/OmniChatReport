@@ -22,7 +22,7 @@ public class GUIListener implements Listener {
     public void onInventoryClick(InventoryClickEvent event) {
         Inventory inventory = event.getInventory();
 
-        if (!plugin.getGuiManager().getReportsMenu().isReportsMenu(inventory.getHolder()))
+        if (!plugin.getGuiManager().getReportsMenu().isReportsMenu(inventory))
             return;
 
         ItemStack item = event.getCurrentItem();
@@ -40,6 +40,9 @@ public class GUIListener implements Listener {
             return;
         }
 
+        if (command.startsWith("/"))
+            command = command.substring(1);
+
         event.setCancelled(true);
 
         Player player = (Player) event.getWhoClicked();
@@ -49,7 +52,6 @@ public class GUIListener implements Listener {
 
         // TODO analyze previous chats (from database)
         // TODO detect if inappropriate
-        // TODO cancel chat for player muted
 
         Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), command);
 

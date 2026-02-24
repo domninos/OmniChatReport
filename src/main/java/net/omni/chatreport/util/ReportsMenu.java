@@ -15,7 +15,7 @@ public class ReportsMenu implements InventoryHolder {
         return this.inventory;
     }
 
-    public boolean isReportsMenu(InventoryHolder holder) {
-        return holder instanceof ReportsMenu;
+    public boolean isReportsMenu(Inventory other) {
+        return other.equals(this.inventory);
     }
 }

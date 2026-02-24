@@ -2,12 +2,13 @@ package net.omni.chatreport;
 
 import net.omni.chatreport.commands.MuteCommand;
 import net.omni.chatreport.commands.ReportCommand;
+import net.omni.chatreport.commands.UnmuteCommand;
 import net.omni.chatreport.db.DatabaseHandler;
 import net.omni.chatreport.db.RedisHandler;
 import net.omni.chatreport.listeners.GUIListener;
+import net.omni.chatreport.listeners.PlayerListener;
 import net.omni.chatreport.managers.GUIManager;
 import net.omni.chatreport.managers.MuteManager;
-import net.omni.chatreport.util.OMCConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
@@ -16,8 +17,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class OmniChatReport extends JavaPlugin {
 
     private String prefix = "OCR";
-
-//    private OMCConfig reportConfig;
+    private String server = "";
 
     private GUIManager guiManager;
 
@@ -29,7 +29,7 @@ public final class OmniChatReport extends JavaPlugin {
 
     /*
     TODO:
-        store recent chat messages of the reported player database (should be at least 1 day)
+        store recent chat messages of the reported player database (should be at least 1 day) - use redisClient.setex (may expiration to)
         use AI-based / advanced filtering systems
             detect: Swearing, Advertising (IP Addresses, domains, links etc.) store matching and things on config.yml
         if inappropriate:
@@ -38,45 +38,15 @@ public final class OmniChatReport extends JavaPlugin {
         use mySQL or Redis for chat storing
          - add fallback punishments.yml
         add command autocomplete (especially in /report <player> <reason> <-)
-        check mute on join (redis)
-        finish muting, unmuting
-        finish database handling
-        make sure redis is working
         setup bungee for multi-server
+        check for all async threads. make threads just for redis and database.
 
      */
-
-
-    @Override
-    public void onEnable() {
-        saveDefaultConfig();
-
-        prefix = getConfig().getString("prefix");
-
-        guiManager = new GUIManager(this);
-
-        // listeners
-        new GUIListener(this).register();
-
-        // commands
-        new ReportCommand(this).register();
-        new MuteCommand(this).register();
-
-        if (useRedis())
-            this.redisHandler = new RedisHandler(this);
-
-        databaseHandler = new DatabaseHandler(this);
-        databaseHandler.loadDatabase();
-
-        muteManager = new MuteManager(this);
-        muteManager.load();
-
-        sendConsole("&aSuccessfully enabled " + getName() + "v-" + getDescription().getVersion());
-    }
 
     @Override
     public void onDisable() {
         guiManager.flush();
+        muteManager.flush();
 
         if (useRedis())
             redisHandler.close();
@@ -87,8 +57,59 @@ public final class OmniChatReport extends JavaPlugin {
         sendConsole("&cSuccessfully disabled " + getName() + "v-" + getDescription().getVersion());
     }
 
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+
+        updateConfig();
+
+        guiManager = new GUIManager(this);
+
+        // listeners
+        new GUIListener(this).register();
+        new PlayerListener(this).register();
+
+        // commands
+        new ReportCommand(this).register();
+        new MuteCommand(this).register();
+        new UnmuteCommand(this).register();
+
+        databaseHandler = new DatabaseHandler(this);
+        databaseHandler.loadDatabase();
+
+        if (useRedis())
+            this.redisHandler = new RedisHandler(this);
+
+        muteManager = new MuteManager(this);
+
+        sendConsole("&aSuccessfully enabled " + getName() + " v-" + getDescription().getVersion());
+    }
+
+    public void updateConfig() {
+        prefix = getConfig().getString("prefix");
+        server = getConfig().getString("server");
+    }
+
     public boolean useRedis() {
         return getConfig().getBoolean("redis.enable");
+    }
+
+    public void sendConsole(String message) {
+        sendMessage(Bukkit.getConsoleSender(), message);
+    }
+
+    public void sendMessage(CommandSender sender, String message) {
+        sendMessage(sender, message, true);
+    }
+
+    public void sendMessage(CommandSender sender, String message, boolean addPrefix) {
+        String toSend = addPrefix ? "%prefix% &r".replace("%prefix%", prefix) + message : message;
+
+        sender.sendMessage(translate(toSend));
+    }
+
+    public String translate(String message) {
+        return ChatColor.translateAlternateColorCodes('&', message);
     }
 
     public RedisHandler getRedisHandler() {
@@ -105,24 +126,6 @@ public final class OmniChatReport extends JavaPlugin {
 
     public DatabaseHandler getDatabaseHandler() {
         return databaseHandler;
-    }
-
-    public void sendConsole(String message) {
-        sendMessage(Bukkit.getConsoleSender(), message);
-    }
-
-    public void sendMessage(CommandSender sender, String message, boolean addPrefix) {
-        String toSend = addPrefix ? "%prefix% &r".replace("%prefix%", prefix) + message : message;
-
-        sender.sendMessage(translate(toSend));
-    }
-
-    public void sendMessage(CommandSender sender, String message) {
-        sendMessage(sender, message, true);
-    }
-
-    public String translate(String message) {
-        return ChatColor.translateAlternateColorCodes('&', message);
     }
 
 }

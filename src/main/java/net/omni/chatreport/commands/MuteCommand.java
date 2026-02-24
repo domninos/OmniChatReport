@@ -30,18 +30,18 @@ public class MuteCommand implements CommandExecutor {
         if (args.length < 3)
             return sendHelp(sender);
         else {
-            Player target = Bukkit.getPlayer(args[1]);
+            Player target = Bukkit.getPlayer(args[0]);
 
             if (target == null) {
                 plugin.sendMessage(sender, "&cPlayer '" + args[1] + "' not found.");
                 return true;
             }
 
-            String timeString = args[2];
+            String timeString = args[1];
 
             StringBuilder builder = new StringBuilder();
 
-            for (int i = 1; i < args.length; i++)
+            for (int i = 2; i < args.length; i++)
                 builder.append(args[i]).append(" ");
 
             String reason = builder.toString().trim();
@@ -51,7 +51,11 @@ public class MuteCommand implements CommandExecutor {
                 String formattedTime = TimeUtil.getTimeRemainingString(timeMillis);
 
                 plugin.sendMessage(sender, "&aSuccessfully muted " + target.getName()
-                        + " for " + reason + " (" + formattedTime + ").");
+                        + " for " + reason + ". Remaining: " + formattedTime);
+
+                // broadcast
+                plugin.sendMessage(target, "&cYou have been muted by " + sender.getName() + ".");
+                plugin.sendMessage(target, "&cReason: " + reason);
             }
         }
 
@@ -67,7 +71,7 @@ public class MuteCommand implements CommandExecutor {
         StringBuilder toSend = new StringBuilder();
 
         for (String text : help) {
-            if (!text.startsWith("{report.")) {
+            if (!text.startsWith("{mute.")) {
                 toSend.append(text).append("\n");
                 continue;
             }

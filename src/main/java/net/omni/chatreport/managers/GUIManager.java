@@ -54,7 +54,6 @@ public class GUIManager {
             return;
         }
 
-
         for (String item_code : item_section.getKeys(false)) {
             if (item_code == null)
                 continue;
@@ -85,15 +84,13 @@ public class GUIManager {
             ITEMS.put(item_code, item);
         }
 
-        int slot;
+        int slot = 0;
 
         for (String row : item_rows) {
             if (row == null || row.isBlank()) {
                 plugin.sendConsole("&cCould not load inventory because a row is empty.");
                 continue;
             }
-
-            slot = 0;
 
             for (String item_slot : row.split(" ")) {
                 // # - glass_pane if hashtag_glass else empty
@@ -105,7 +102,7 @@ public class GUIManager {
                     // CUSTOM ITEM
                     // SWEARING, ADVERTISING, DOMAINS, LINKS
 
-                    if (ITEMS.containsKey(item_slot)) {
+                    if (ITEMS.containsKey(item_slot.toUpperCase())) {
                         // one of the custom items
                         inventory.setItem(slot, ITEMS.get(item_slot));
                     }
@@ -149,7 +146,7 @@ public class GUIManager {
     }
 
     public boolean isReportItem(ItemStack itemStack) {
-        if (ITEMS.isEmpty())
+        if (ITEMS.isEmpty() || itemStack == null)
             return false;
 
         for (ItemStack item : ITEMS.values()) {

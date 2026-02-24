@@ -1,5 +1,6 @@
 package net.omni.chatreport.managers;
 
+import net.omni.chatreport.MutedPlayer;
 import net.omni.chatreport.OmniChatReport;
 import net.omni.chatreport.util.TimeUtil;
 import org.bukkit.Bukkit;
@@ -10,8 +11,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 public class MuteManager {
-    private static final Map<String, Long> PLAYER_TO_EXPIRE = new HashMap<>();
-    private static final Map<String, String> PLAYER_TO_REASON = new HashMap<>();
+    private static final Map<String, MutedPlayer> PLAYER_MAP = new HashMap<>();
 
     private final OmniChatReport plugin;
 
@@ -20,7 +20,7 @@ public class MuteManager {
     }
 
     public void loadMuted(String name) {
-        plugin.getDatabaseHandler().loadPlayer(name); // also load to PLAYER_TO maps
+        plugin.getDatabaseHandler().loadPlayer(name); // also load to PLAYER_MAP
     }
 
     public boolean mutePlayer(String issuer, Player player, String timeString, String reason) {
@@ -53,10 +53,9 @@ public class MuteManager {
             return false;
         }
 
-        PLAYER_TO_EXPIRE.put(player.getName(), millisTime);
-        PLAYER_TO_REASON.put(player.getName(), reason);
+        MutedPlayer mutedPlayer = new MutedPlayer(issuer, player, millisTime, reason);
 
-        plugin.getDatabaseHandler().insert(issuer, player.getName(), millisTime, reason);
+        PLAYER_MAP.put(player.getName(), mutedPlayer);
 
         // check if redis
         if (plugin.useRedis())
@@ -66,10 +65,10 @@ public class MuteManager {
     }
 
     public boolean isMuted(Player player) {
-        if (player == null)
+        if (player == null || !player.isOnline())
             return false;
 
-        boolean cache = PLAYER_TO_EXPIRE.containsKey(player.getName());
+        boolean cache = PLAYER_MAP.containsKey(player.getName());
 
         if (!cache) {
             if (plugin.useRedis())
@@ -86,6 +85,17 @@ public class MuteManager {
         return cache;
     }
 
+    public void saveToDatabase(Player player) {
+        if (!isMuted(player)) {
+            plugin.sendConsole("&cCould not save to database because " + player.getName() + " is not muted.");
+            return;
+        }
+
+        MutedPlayer mutedPlayer = PLAYER_MAP.get(player.getName());
+
+        plugin.getDatabaseHandler().insert(mutedPlayer);
+    }
+
     public void updateCache(Player player) {
         if (!isMuted(player))
             return;
@@ -97,30 +107,26 @@ public class MuteManager {
     }
 
     public long getTimeLeft(Player player) {
-        return PLAYER_TO_EXPIRE.getOrDefault(player.getName(), 0L);
+        return isMuted(player) ? getMutedPlayer(player.getName()).getExpiry() : 0L;
     }
 
-    // TODO support multi-server
     public void unmutePlayer(Player player) {
         if (!isMuted(player))
             return;
 
-        PLAYER_TO_EXPIRE.remove(player.getName());
-        PLAYER_TO_REASON.remove(player.getName());
+        PLAYER_MAP.remove(player.getName());
 
         if (plugin.useRedis())
-            plugin.getRedisHandler().unmute(player.getName());
+            plugin.getRedisHandler().unmute(player.getName(), plugin.checkServer());
 
         plugin.getDatabaseHandler().delete(player.getName());
-
     }
 
-    public String getReason(Player player) {
-        return player != null ? PLAYER_TO_REASON.getOrDefault(player.getName(), "N/A") : "N/A";
+    public MutedPlayer getMutedPlayer(String playerName) {
+        return PLAYER_MAP.get(playerName);
     }
 
     public void flush() {
-        PLAYER_TO_EXPIRE.clear();
-        PLAYER_TO_REASON.clear();
+        PLAYER_MAP.clear();
     }
 }

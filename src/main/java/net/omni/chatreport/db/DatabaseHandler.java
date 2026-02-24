@@ -4,19 +4,17 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import net.omni.chatreport.OmniChatReport;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
+import java.util.concurrent.CompletableFuture;
 
 public class DatabaseHandler {
 
+    public static final String TABLE_NAME = "mutes";
+
     private final OmniChatReport plugin;
-
     private HikariDataSource dataSource;
-
-    private static final String TABLE_NAME = "mutes";
 
     public DatabaseHandler(OmniChatReport plugin) {
         this.plugin = plugin;
@@ -29,9 +27,9 @@ public class DatabaseHandler {
         String password = plugin.getConfig().getString("database.password");
         String host = plugin.getConfig().getString("database.host");
         int port = plugin.getConfig().getInt("database.port");
-        String database = "ocr_mutes";
+        String database = plugin.getConfig().getString("database.database");
 
-        if (username == null || password == null || host == null || port == 0) {
+        if (username == null || password == null || host == null || port == 0 || database == null) {
             plugin.sendConsole("&cCould not find SQL credentials in config.yml. Aborting.");
             return;
         }
@@ -47,23 +45,20 @@ public class DatabaseHandler {
 
         this.dataSource = new HikariDataSource(config);
 
-        // TODO also Redis for mem-cache
-
-        Bukkit.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try (Connection connection = getConnection();
                  Statement statement = connection.createStatement()) {
 
                 statement.execute("""
-                    CREATE TABLE IF NOT EXISTS 'mutes' (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        uuid VARCHAR(36) NOT NULL,
-                        name VARCHAR(36) NOT NULL,
-                        reason VARCHAR(200) NOT NULL,
-                        issued_by VARCHAR(36) NOT NULL,
-                        expires_at BIGINT NOT NULL,
-                        created_at BIGINT DEFAULT (UNIX_TIMESTAP() * 1000)
-                    );
-                """);
+                            CREATE TABLE IF NOT EXISTS mutes (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                name VARCHAR(36) NOT NULL,
+                                reason VARCHAR(200) NOT NULL,
+                                issued_by VARCHAR(36) NOT NULL,
+                                expires_at BIGINT NOT NULL,
+                                created_at BIGINT NOT NULL
+                            );
+                        """);
             } catch (SQLException e) {
                 e.printStackTrace();
                 return;
@@ -74,19 +69,75 @@ public class DatabaseHandler {
     }
 
     /*
-    Always use Redis for live checks — MySQL is slower and doesn’t need to be queried often.
-
-    Use HikariCP for MySQL connections — only when inserting/updating data.
-
-    Use Redis expiration instead of scheduling tasks — no need for Bukkit runnables.
-
-    Multi-server network → use Redis pub/sub to notify other servers of mute/unmute instantly.
+    name
+    id
+    reason
+    issued_by
+    expires_at
+    created_at
      */
 
+    public Connection getConnection() throws SQLException {
+        return this.dataSource.getConnection();
+    }
+
+    /*
+    Use Redis expiration instead of scheduling tasks — no need for Bukkit runnables.
+     */
+
+    public void loadPlayer(String name) {
+        String sql = "SELECT reason, issued_by, expires_at FROM "
+                + TABLE_NAME + " WHERE name = ? LIMIT 1";
+
+        Player player = Bukkit.getPlayer(name);
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try (Connection connection = getConnection();
+                 PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                statement.setString(1, name);
+
+                ResultSet rs = statement.executeQuery();
+
+                if (rs.next()) {
+                    String reason = rs.getString("reason");
+                    String issuer = rs.getString("issued_by");
+                    long expires_at = rs.getLong("expires_at");
+
+                    if (System.currentTimeMillis() < expires_at) {
+                        delete(name);
+                    } else {
+                        plugin.getMuteManager().mutePlayer(issuer, player, expires_at, reason);
+                    }
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    // SHOULD NOT BE USED FREQUENTLY
+    public void delete(String playerName) {
+        String sql = "DELETE FROM " + TABLE_NAME + " WHERE name = ?";
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try (Connection connection = getConnection();
+                 PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                statement.setString(1, playerName);
+
+                statement.executeUpdate();
+
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    // SHOULD NOT BE USED FREQUENTLY
     public void insert(String issuer, String playerName, long millisTime, String reason) {
-        // TODO
-        String sql = "INSERT INTO '" + TABLE_NAME
-                + "'(uuid, name, reason, issued_by, expires_at) VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT IGNORE INTO " + TABLE_NAME +
+                "(name, reason, issued_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?)";
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try (Connection connection = getConnection();
@@ -97,6 +148,8 @@ public class DatabaseHandler {
                 statement.setString(3, issuer);
                 statement.setLong(4, millisTime);
 
+                statement.setLong(5, System.currentTimeMillis());
+
                 statement.executeUpdate();
 
             } catch (SQLException e) {
@@ -105,22 +158,28 @@ public class DatabaseHandler {
         });
     }
 
-    public void remove(String playerName) {
-        // TODO
+    // SHOULD NOT BE USED FREQUENTLY (ONLY ON JOIN)
+    public CompletableFuture<Boolean> exists(String playerName) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
 
-        if (plugin.useRedis()) {
-            // TODO
-        }
-    }
+        String sql = "SELECT 1 FROM mutes WHERE name = ? LIMIT 1;";
 
-    public boolean isMuted(String playerName) {
-        // TODO
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try (Connection connection = getConnection();
+                 PreparedStatement statement = connection.prepareStatement(sql)) {
 
-        if (plugin.useRedis()) {
-            // TODO
-        }
+                statement.setString(1, playerName);
 
-        return false;
+                try (ResultSet rs = statement.executeQuery()) {
+                    future.complete(rs.next());
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future;
     }
 
     public void closeDB() {
@@ -130,9 +189,5 @@ public class DatabaseHandler {
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    public Connection getConnection() throws SQLException {
-        return this.dataSource.getConnection();
     }
 }

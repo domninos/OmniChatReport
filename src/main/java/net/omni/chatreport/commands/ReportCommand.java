@@ -16,7 +16,7 @@ public class ReportCommand implements CommandExecutor {
     public ReportCommand(OmniChatReport plugin) {
         this.plugin = plugin;
 
-        this.help = new String[] {
+        this.help = new String[]{
                 "{report.use} &b/report <player> &8>> &7Open Reports GUI.",
                 "{report.usechat} &b/report <player> <reason> &8>> &7Report a player with a reason.",
         };
@@ -31,13 +31,26 @@ public class ReportCommand implements CommandExecutor {
         if (args.length == 0) {
             return sendHelp(sender);
         } else if (args.length == 1) {
+            if (args[0].equalsIgnoreCase("reload")) {
+                if (!(sender.hasPermission("report.reload")))
+                    return noPerms(sender);
+
+                plugin.reloadConfig();
+                plugin.updateConfig();
+                plugin.sendMessage(sender, "&aReloaded config.");
+                return true;
+            }
+
             if (!(sender instanceof Player player))
                 return playerOnly(sender);
+
+            if (!sender.hasPermission("report.use"))
+                return noPerms(sender);
 
             Player target = Bukkit.getPlayer(args[0]);
 
             if (target == null || !target.isOnline()) {
-                plugin.sendMessage(player, "&cPlayer not found.");
+                plugin.sendMessage(sender, "&cERROR! Player is not online.");
                 return true;
             }
 
@@ -51,12 +64,7 @@ public class ReportCommand implements CommandExecutor {
             // TODO
             //  /report <player> <reason> -
         }
-            return sendHelp(sender);
-    }
-
-    private boolean playerOnly(CommandSender sender) {
-        plugin.sendMessage(sender, "&cOnly players can use this command.");
-        return true;
+        return sendHelp(sender);
     }
 
     private boolean noPerms(CommandSender sender) {
@@ -83,6 +91,11 @@ public class ReportCommand implements CommandExecutor {
         }
 
         plugin.sendMessage(sender, toSend.toString(), false);
+        return true;
+    }
+
+    private boolean playerOnly(CommandSender sender) {
+        plugin.sendMessage(sender, "&cOnly players can use this command.");
         return true;
     }
 

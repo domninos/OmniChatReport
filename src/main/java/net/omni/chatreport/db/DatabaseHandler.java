@@ -5,9 +5,11 @@ import com.zaxxer.hikari.HikariDataSource;
 import net.omni.chatreport.MutedPlayer;
 import net.omni.chatreport.OmniChatReport;
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 
 import java.sql.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public class DatabaseHandler {
@@ -16,8 +18,6 @@ public class DatabaseHandler {
 
     private final OmniChatReport plugin;
     private HikariDataSource dataSource;
-
-    // TODO make a new Thread dedicated for database
 
     public DatabaseHandler(OmniChatReport plugin) {
         this.plugin = plugin;
@@ -38,7 +38,12 @@ public class DatabaseHandler {
         }
 
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database + "?useSSL=false");
+        config.setJdbcUrl("jdbc:mysql://" + host + ":" + port + "/" + database
+                + "?useSSL=true"
+                + "&requireSSL=true"
+                + "&verifyServerCertificate=false"
+                + "&rewriteBatchedStatements=true");
+
         config.setUsername(username);
         config.setPassword(password);
 
@@ -58,6 +63,7 @@ public class DatabaseHandler {
                                 name VARCHAR(36) NOT NULL UNIQUE,
                                 reason VARCHAR(200) NOT NULL,
                                 issued_by VARCHAR(36) NOT NULL,
+                                server VARCHAR(36) NOT NULL,
                                 expires_at BIGINT NOT NULL,
                                 created_at BIGINT NOT NULL
                             );
@@ -84,35 +90,6 @@ public class DatabaseHandler {
         return this.dataSource.getConnection();
     }
 
-    public void loadPlayer(String name) {
-        String sql = "SELECT reason, issued_by, expires_at FROM " + TABLE_NAME + " WHERE name = ? LIMIT 1";
-
-        Player player = Bukkit.getPlayer(name);
-
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            try (Connection connection = getConnection();
-                 PreparedStatement statement = connection.prepareStatement(sql)) {
-
-                statement.setString(1, name);
-
-                ResultSet rs = statement.executeQuery();
-
-                if (rs.next()) {
-                    String reason = rs.getString("reason");
-                    String issuer = rs.getString("issued_by");
-                    long expires_at = rs.getLong("expires_at");
-
-                    if (expires_at <= System.currentTimeMillis())
-                        delete(name);
-                    else
-                        plugin.getMuteManager().mutePlayer(issuer, player, expires_at, reason);
-                }
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        });
-    }
-
     // SHOULD NOT BE USED FREQUENTLY
     public void delete(String playerName) {
         String sql = "DELETE FROM " + TABLE_NAME + " WHERE name = ?";
@@ -131,6 +108,44 @@ public class DatabaseHandler {
         });
     }
 
+    // returns issued_by, reason, server, expires_at
+    public CompletableFuture<Map<String, Object>> select(String playerName) {
+        CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
+
+        String sql = "SELECT name, issued_by, reason, server, expires_at FROM " + TABLE_NAME + " WHERE name = ? LIMIT 1";
+        // get all since pang-load to onjoin if muted
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try (Connection connection = getConnection();
+                 PreparedStatement statement = connection.prepareStatement(sql)) {
+
+                statement.setString(1, playerName);
+
+                try (ResultSet rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        Map<String, Object> map = new HashMap<>();
+
+                        String issuer = rs.getString("issued_by");
+                        String server = rs.getString("server");
+                        String reason = rs.getString("reason");
+                        long expires_at = rs.getLong("expires_at");
+
+                        map.put("issuer", issuer);
+                        map.put("server", server);
+                        map.put("reason", reason);
+                        map.put("expires_at", expires_at);
+
+                        future.complete(map);
+                    }
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+
+        return future;
+    }
+
     // SHOULD NOT BE USED FREQUENTLY
     public void insert(MutedPlayer mutedPlayer) {
         String issuer = mutedPlayer.issuer();
@@ -138,7 +153,7 @@ public class DatabaseHandler {
         long millisTime = mutedPlayer.expiry();
         String reason = mutedPlayer.reason();
 
-        String sql = "INSERT IGNORE INTO " + TABLE_NAME + "(name, reason, issued_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT IGNORE INTO " + TABLE_NAME + "(name, reason, issued_by, server, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)";
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try (Connection connection = getConnection();
@@ -147,15 +162,67 @@ public class DatabaseHandler {
                 statement.setString(1, playerName);
                 statement.setString(2, reason);
                 statement.setString(3, issuer);
-                statement.setLong(4, millisTime);
+                statement.setString(4, mutedPlayer.getFromServer());
+                statement.setLong(5, millisTime);
 
-                statement.setLong(5, System.currentTimeMillis());
+                statement.setLong(6, System.currentTimeMillis());
 
                 statement.executeUpdate();
             } catch (SQLException e) {
                 e.printStackTrace();
             }
         });
+    }
+
+    // SHOULD NOT BE USED FREQUENTLY
+    public void insertBatch(Set<MutedPlayer> mutedPlayers) {
+        if (mutedPlayers.isEmpty())
+            return;
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> insertBatchSync(mutedPlayers));
+    }
+
+    // SHOULD NOT BE USED FREQUENTLY (ONLY ON SERVER DISABLE)
+    public void insertBatchSync(Set<MutedPlayer> mutedPlayers) {
+        if (mutedPlayers.isEmpty())
+            return;
+
+        String sql = "INSERT IGNORE INTO " + TABLE_NAME + "(name, reason, issued_by, server, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)";
+
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            int counter = 0;
+
+            for (MutedPlayer mutedPlayer : mutedPlayers) {
+                String playerName = mutedPlayer.playerName();
+                String reason = mutedPlayer.reason();
+                String issuer = mutedPlayer.issuer();
+                long millisTime = mutedPlayer.expiry();
+
+                statement.setString(1, playerName);
+                statement.setString(2, reason);
+                statement.setString(3, issuer);
+                statement.setString(4, mutedPlayer.getFromServer());
+                statement.setLong(5, millisTime);
+
+                statement.setLong(6, System.currentTimeMillis());
+
+                statement.addBatch();
+
+                counter++;
+            }
+
+            statement.executeBatch();
+
+            int finalCounter = counter;
+
+            plugin.getSaveManager().flush();
+
+            plugin.sendConsole("&aSaved batch of " + finalCounter + " muted players.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     // SHOULD NOT BE USED FREQUENTLY (ONLY ON JOIN)

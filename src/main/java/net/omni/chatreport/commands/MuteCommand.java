@@ -30,11 +30,19 @@ public class MuteCommand implements CommandExecutor {
         if (args.length < 3)
             return sendHelp(sender);
         else {
-            String targetName = args[0];
-
-            Player target = Bukkit.getPlayer(targetName);
-
             String timeString = args[1];
+
+            long timeMillis;
+
+            try {
+                timeMillis = TimeUtil.parseDuration(timeString);
+            } catch (IllegalArgumentException e) {
+                plugin.sendMessage(sender, "&c" + e.getMessage());
+                return true;
+            }
+
+            String targetName = args[0];
+            Player target = Bukkit.getPlayer(targetName);
 
             StringBuilder builder = new StringBuilder();
 
@@ -43,23 +51,23 @@ public class MuteCommand implements CommandExecutor {
 
             String reason = builder.toString().trim();
 
-            long timeMillis = TimeUtil.parseDuration(timeString);
-            String formattedTime = TimeUtil.getTimeRemainingString(timeMillis);
-
             if (target == null) {
                 plugin.sendMessage(sender, "&cPlayer '" + targetName + "' not found. Trying on another server...");
 
                 plugin.getRedisHandler().publishMute(sender.getName(), targetName, timeMillis, reason, plugin.checkServer());
             } else {
-                plugin.getMuteManager().mutePlayer(sender.getName(), target, plugin.checkServer(), timeString, reason).thenAccept(success -> {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        plugin.sendMessage(sender, "&aSuccessfully muted " + target.getName()
-                                + " for " + reason + ". Duration: " + formattedTime);
+                String formattedTime = TimeUtil.getTimeRemainingString(timeMillis);
 
-                        // broadcast
-                        plugin.sendMessage(target, "&cYou have been muted by " + sender.getName() + " for " + formattedTime + ".");
-                        plugin.sendMessage(target, "&cReason: " + reason);
-                    });
+                plugin.getMuteManager().mutePlayer(sender.getName(), target, plugin.checkServer(), timeString, reason).thenAccept(success -> {
+                    if (success)
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            plugin.sendMessage(sender, "&aSuccessfully muted " + target.getName()
+                                    + " for " + reason + ". Duration: " + formattedTime);
+
+                            // broadcast
+                            plugin.sendMessage(target, "&cYou have been muted by " + sender.getName() + " for " + formattedTime + ".");
+                            plugin.sendMessage(target, "&cReason: " + reason);
+                        });
                 });
             }
         }

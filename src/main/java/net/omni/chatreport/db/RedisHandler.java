@@ -1,18 +1,24 @@
 package net.omni.chatreport.db;
 
 import net.omni.chatreport.OmniChatReport;
+import net.omni.chatreport.util.TimeUtil;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import redis.clients.jedis.*;
 
 public class RedisHandler {
 
     private static final String CHANNEL = "ocr_mutes";
 
+    private final OmniChatReport plugin;
     private final RedisClient redisClient;
+    private boolean subscribed = false;
     private Jedis jedis;
     private JedisPubSub jedisPubSub;
 
     public RedisHandler(OmniChatReport plugin) {
+        this.plugin = plugin;
+
         String user = plugin.getConfig().getString("redis.user");
         String password = plugin.getConfig().getString("redis.password");
         String host = plugin.getConfig().getString("redis.host");
@@ -29,6 +35,16 @@ public class RedisHandler {
                 .hostAndPort(hostAndPort)
                 .clientConfig(config)
                 .build();
+
+        startSubscriber(host, port, password);
+
+        plugin.sendConsole("&aSuccessfully connected to redis.");
+    }
+
+    public void startSubscriber(String host, int port, String password) {
+        if (subscribed) return;
+
+        subscribed = true;
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             jedis = new Jedis(host, port);
@@ -57,18 +73,49 @@ public class RedisHandler {
                             String fromServer = parts[5];
 
                             if (!plugin.checkServer().equals(fromServer)) {
-                                plugin.getMuteManager().mutePlayer(issuer, name, fromServer, timeString, reason, true)
-                                        .thenAccept(success -> {
-                                            // successfully muted from another server
-                                            if (success)
-                                                plugin.sendConsole("&c" + issuer + " has muted " + name + " on " + fromServer + " for " + reason);
-                                        });
+                                Player player = Bukkit.getServer().getPlayer(name);
+
+                                if (player != null) {
+                                    plugin.sendConsole("&aMute " + player.getName() + " request from " + fromServer + " by " + issuer);
+
+                                    plugin.getMuteManager().mutePlayer(issuer, player.getName(), fromServer, timeString, reason, true, false)
+                                            .thenAccept(success -> {
+                                                // successfully muted from another server
+                                                if (success) {
+                                                    plugin.getMuteManager().getTimeLeft(player).thenAccept(time -> {
+                                                        Bukkit.getScheduler().runTask(plugin, () -> {
+                                                            String formattedTime = TimeUtil.getTimeRemainingString(time);
+
+                                                            plugin.sendConsole("&c" + issuer + " has muted "
+                                                                    + player.getName() + " from " + fromServer + " for " + reason);
+
+                                                            plugin.sendMessage(player, "&cYou have been muted for " + formattedTime + ".");
+                                                            plugin.sendMessage(player, "&cReason: " + reason);
+                                                        });
+                                                    });
+                                                } else
+                                                    Bukkit.getScheduler().runTask(plugin, () -> plugin.sendConsole("&cCould not mute player."));
+                                            });
+                                }
                             }
                         } else if (parts[0].equals("unmute")) {
                             String fromServer = parts[2];
 
-                            if (!plugin.checkServer().equals(fromServer))
-                                plugin.getMuteManager().unmutePlayer(name);
+                            if (!plugin.checkServer().equals(fromServer)) {
+                                Player player = Bukkit.getServer().getPlayer(name);
+
+                                if (player != null) {
+                                    plugin.sendConsole("&aUnmute " + player.getName() + " request from " + fromServer);
+
+                                    plugin.getMuteManager().isMuted(name).thenAccept(isMuted -> {
+                                        if (isMuted)
+                                            Bukkit.getScheduler().runTask(plugin, () -> plugin.getMuteManager().unmutePlayer(player.getName(), false)
+                                                    .thenAccept(isUnmuted -> plugin.sendMessage(player, "&aYou are now unmuted.")));
+                                        else
+                                            Bukkit.getScheduler().runTask(plugin, () -> plugin.sendConsole("&c" + player.getName() + " is not muted."));
+                                    });
+                                }
+                            }
                         } else {
                             plugin.sendConsole("&cUnknown Redis action: " + parts[0]);
                         }
@@ -79,31 +126,32 @@ public class RedisHandler {
             try {
                 jedis.subscribe(jedisPubSub, CHANNEL);
             } catch (Exception e) {
-                plugin.sendConsole("&cCouldn't subscribe to Jedis.");
+                plugin.sendConsole("&cUnsubscribed from Redis.");
             }
         });
 
-        plugin.sendConsole("&aSuccessfully connected to redis.");
     }
 
     public boolean isMuted(String name) {
         return redisClient.exists("mute:" + name);
     }
 
-    public void unmute(String name, String fromServer) {
+    public void unmute(String name, String fromServer, boolean publish) {
         redisClient.del("mute:" + name);
 
-        publishUnmute(name, fromServer);
+        if (publish)
+            publishUnmute(name, fromServer);
     }
 
     public void publishUnmute(String name, String fromServer) {
         redisClient.publish(CHANNEL, "unmute:" + name + ":" + fromServer);
     }
 
-    public void mutePlayer(String issuer, String name, long millisTime, String reason, String server) {
+    public void mutePlayer(String issuer, String name, long millisTime, String reason, String server, boolean publish) {
         redisClient.set("mute:" + name, millisTime + ":" + reason + ":" + server);
 
-        publishMute(issuer, name, millisTime, reason, server);
+        if (publish)
+            publishMute(issuer, name, millisTime, reason, server);
     }
 
     public void publishMute(String issuer, String name, long millisTime, String reason, String server) {
@@ -119,5 +167,7 @@ public class RedisHandler {
 
         if (redisClient != null)
             redisClient.close();
+
+        subscribed = false;
     }
 }

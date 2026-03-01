@@ -10,6 +10,7 @@ import net.omni.chatreport.listeners.PlayerListener;
 import net.omni.chatreport.managers.GUIManager;
 import net.omni.chatreport.managers.MuteManager;
 import net.omni.chatreport.managers.SaveManager;
+import net.omni.chatreport.util.Libraries;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
@@ -17,18 +18,20 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class OmniChatReport extends JavaPlugin {
 
+
     private String prefix = "OCR";
     private String server = "";
-
     private GUIManager guiManager;
-
     private DatabaseHandler databaseHandler;
-
     private MuteManager muteManager;
-
     private RedisHandler redisHandler;
-
     private SaveManager saveManager;
+
+    @Override
+    public void onLoad() {
+        new Libraries(this).loadDependencies();
+    }
+
 
     @Override
     public void onDisable() {
@@ -49,6 +52,7 @@ public final class OmniChatReport extends JavaPlugin {
 
     @Override
     public void onEnable() {
+
         saveDefaultConfig();
 
         updateConfig();

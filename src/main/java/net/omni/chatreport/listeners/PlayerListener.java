@@ -22,39 +22,40 @@ public class PlayerListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
-        if (plugin.getMuteManager().isMuted(player))
-            plugin.getMuteManager().loadMuted(player.getName()); // TODO issuer gets messaged = no no
+        plugin.getMuteManager().isMuted(player).thenAccept(isMuted -> {
+            if (isMuted)
+                plugin.getMuteManager().checkMute(player.getName());
+        });
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
 
-        if (plugin.getMuteManager().isMuted(player))
-            plugin.getMuteManager().saveToDatabase(player);
+        plugin.getMuteManager().isMuted(player).thenAccept(isMuted -> {
+            if (isMuted)
+                plugin.getMuteManager().saveToDatabase(player);
+        });
     }
 
     @EventHandler
     public void onChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
-        boolean muted = plugin.getMuteManager().isMuted(player);
 
-        if (muted) {
-            event.setCancelled(true);
+        plugin.getMuteManager().isMuted(player).thenAccept(isMuted -> {
+            if (!isMuted)
+                return;
 
-            plugin.getMuteManager().updateCache(player);
+            Bukkit.getScheduler().runTask(plugin, () -> event.setCancelled(true));
 
-            long timeLeft = plugin.getMuteManager().getTimeLeft(player);
-
-            if (!plugin.getMuteManager().isMuted(player)) {
-                plugin.sendMessage(player, "&aYou are now unmuted.");
-            } else if (timeLeft > 0)
-                plugin.sendMessage(player, "&cYou are currently muted. Remaining: "
-                        + TimeUtil.getTimeRemainingString(timeLeft));
-
-            if (timeLeft == 0)
-                plugin.getMuteManager().unmutePlayer(player);
-        }
+            plugin.getMuteManager().getTimeLeft(player).thenAccept(time -> {
+                if (!(time <= 0))
+                    Bukkit.getScheduler().runTask(plugin, () -> plugin.sendMessage(player, "&cYou are currently muted. Remaining: "
+                            + TimeUtil.getTimeRemainingString(time)));
+                else
+                    plugin.getMuteManager().unmutePlayer(player.getName());
+            });
+        });
     }
 
     public void register() {

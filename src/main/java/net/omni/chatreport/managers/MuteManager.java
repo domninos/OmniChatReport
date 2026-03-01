@@ -8,7 +8,7 @@ import org.bukkit.entity.Player;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CompletableFuture;
 
 public class MuteManager {
     private static final Map<String, MutedPlayer> PLAYER_MAP = new HashMap<>();
@@ -19,111 +19,173 @@ public class MuteManager {
         this.plugin = plugin;
     }
 
-    public void loadMuted(String name) {
-        plugin.getDatabaseHandler().loadPlayer(name); // also load to PLAYER_MAP
+    public void checkMute(String name) {
+        if (PLAYER_MAP.containsKey(name))
+            return;
+
+        // add to cache
+
+        CompletableFuture<Map<String, Object>> future = plugin.getDatabaseHandler().select(name);
+
+        future.thenAccept(result -> {
+            String issuer = String.valueOf(result.get("issuer"));
+            long millisTime = Long.parseLong(String.valueOf(result.get("expires_at")));
+            String reason = String.valueOf(result.get("reason"));
+            String server = String.valueOf(result.get("server"));
+
+            MutedPlayer mutedPlayer = new MutedPlayer(issuer, name, millisTime, reason, server);
+
+            PLAYER_MAP.put(name, mutedPlayer);
+
+            // check if redis
+            if (plugin.useRedis())
+                plugin.getRedisHandler().mutePlayer(issuer, name, millisTime, reason, server);
+
+            result.clear(); // flush
+        });
     }
 
-    public boolean mutePlayer(String issuer, Player player, String timeString, String reason) {
+    public CompletableFuture<Boolean> mutePlayer(String issuer, Player player, String server, String timeString, String reason) {
         long millisTime;
 
         try {
             millisTime = TimeUtil.parseDuration(timeString);
         } catch (Exception e) {
             plugin.sendConsole(e.getMessage());
-            return false;
+            return CompletableFuture.completedFuture(false);
         }
 
-        return mutePlayer(issuer, player, millisTime, reason);
+        return mutePlayerServer(issuer, player.getName(), server, millisTime, reason, false, false);
     }
 
-    public boolean mutePlayer(String issuer, Player player, long millisTime, String reason) {
-        if (player == null || !player.isOnline()) {
+    public CompletableFuture<Boolean> mutePlayerServer(String issuer,
+                                                       String playerName,
+                                                       String server,
+                                                       long millisTime,
+                                                       String reason,
+                                                       boolean fromAnother,
+                                                       boolean onJoin) {
+
+        Player player = Bukkit.getPlayer(playerName);
+
+        if (fromAnother && (player == null || !player.isOnline())) {
             plugin.sendConsole("&cCould not mute player because player is not found.");
-            return false;
+            return CompletableFuture.completedFuture(false);
         }
 
-        if (isMuted(player)) {
-            Player issuerPlayer = Bukkit.getPlayer(issuer);
+        return isMuted(player).thenApply(isMuted -> {
 
-            // what if console
-            if (issuerPlayer != null)
-                plugin.sendMessage(issuerPlayer, "&c" + player.getName() + " is already muted.");
-            else
-                plugin.sendConsole("&c" + player.getName() + " is already muted.");
-            return false;
-        }
+            if (isMuted && !onJoin) {
 
-        MutedPlayer mutedPlayer = new MutedPlayer(issuer, player, millisTime, reason);
+                Player issuerPlayer = Bukkit.getPlayer(issuer);
 
-        PLAYER_MAP.put(player.getName(), mutedPlayer);
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (issuerPlayer != null)
+                        plugin.sendMessage(issuerPlayer, "&c" + playerName + " is already muted.");
+                    else
+                        plugin.sendConsole("&c" + playerName + " is already muted.");
+                });
 
-        // check if redis
-        if (plugin.useRedis())
-            plugin.getRedisHandler().mutePlayer(issuer, player.getName(), millisTime, reason, plugin.checkServer());
+                return false;
+            }
 
-        return true;
+            MutedPlayer mutedPlayer = new MutedPlayer(issuer, playerName, millisTime, reason, server);
+
+            PLAYER_MAP.put(playerName, mutedPlayer);
+
+            if (plugin.useRedis())
+                plugin.getRedisHandler().mutePlayer(issuer, playerName, millisTime, reason, server);
+
+            plugin.getSaveManager().addToPool(mutedPlayer);
+
+            return true;
+        });
     }
 
-    public boolean isMuted(Player player) {
+    public CompletableFuture<Boolean> isMuted(Player player) {
         if (player == null || !player.isOnline())
-            return false;
+            return CompletableFuture.completedFuture(false);
 
-        boolean cache = PLAYER_MAP.containsKey(player.getName());
+        if (PLAYER_MAP.containsKey(player.getName()))
+            return CompletableFuture.completedFuture(true);
 
-        if (!cache) {
-            if (plugin.useRedis())
-                return plugin.getRedisHandler().isMuted(player.getName());
+        if (plugin.useRedis()) {
+            boolean redisMuted = plugin.getRedisHandler().isMuted(player.getName());
 
-            // MySQL fallback
-            try {
-                return plugin.getDatabaseHandler().exists(player.getName()).get();
-            } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
-            }
+            if (redisMuted)
+                return CompletableFuture.completedFuture(true);
         }
 
-        return cache;
+        // MySQL async
+        return plugin.getDatabaseHandler().exists(player.getName());
+    }
+
+    public CompletableFuture<Boolean> mutePlayer(String issuer,
+                                                 String playerName,
+                                                 String server,
+                                                 String timeString,
+                                                 String reason,
+                                                 boolean fromAnother) {
+
+        long millisTime;
+        try {
+            millisTime = TimeUtil.parseDuration(timeString);
+        } catch (Exception e) {
+            plugin.sendConsole(e.getMessage());
+            return CompletableFuture.completedFuture(false);
+        }
+
+        // call the async version of mutePlayerServer
+        return mutePlayerServer(issuer, playerName, server, millisTime, reason, fromAnother, false);
     }
 
     public void saveToDatabase(Player player) {
-        if (!isMuted(player)) {
-            plugin.sendConsole("&cCould not save to database because " + player.getName() + " is not muted.");
-            return;
-        }
+        isMuted(player).thenAccept(isMuted -> {
+            if (!isMuted) {
+                plugin.sendConsole("&cCould not save to database because " + player.getName() + " is not muted.");
+                return;
+            }
 
-        MutedPlayer mutedPlayer = PLAYER_MAP.get(player.getName());
+            MutedPlayer mutedPlayer = PLAYER_MAP.get(player.getName());
 
-        plugin.getDatabaseHandler().insert(mutedPlayer);
+            plugin.getDatabaseHandler().insert(mutedPlayer); // is async already
+        });
     }
 
-    public void updateCache(Player player) {
-        if (!isMuted(player))
-            return;
+    public CompletableFuture<Long> getTimeLeft(Player player) {
+        return isMuted(player).thenApply(isMuted -> {
+            if (!isMuted)
+                return 0L;
 
-        long expiry = getTimeLeft(player);
+            MutedPlayer mutedPlayer = PLAYER_MAP.get(player.getName());
 
-        if (expiry == 0 || expiry <= System.currentTimeMillis())
-            unmutePlayer(player);
+            if (mutedPlayer == null)
+                return 0L;
+
+            return mutedPlayer.getExpiry();
+        });
     }
 
-    public long getTimeLeft(Player player) {
-        return isMuted(player) ? getMutedPlayer(player.getName()).getExpiry() : 0L;
-    }
-
-    public void unmutePlayer(Player player) {
-        if (!isMuted(player))
+    public void unmutePlayer(String playerName) {
+        if (!PLAYER_MAP.containsKey(playerName))
             return;
 
-        PLAYER_MAP.remove(player.getName());
+        plugin.getSaveManager().removeFromPool(playerName);
+
+        MutedPlayer mutedPlayer = PLAYER_MAP.remove(playerName);
 
         if (plugin.useRedis())
-            plugin.getRedisHandler().unmute(player.getName(), plugin.checkServer());
+            plugin.getRedisHandler().unmute(playerName, mutedPlayer.getFromServer());
 
-        plugin.getDatabaseHandler().delete(player.getName());
+        plugin.getDatabaseHandler().delete(playerName); // async already
     }
 
     public MutedPlayer getMutedPlayer(String playerName) {
         return PLAYER_MAP.get(playerName);
+    }
+
+    public CompletableFuture<Boolean> isMuted(String playerName) {
+        return isMuted(Bukkit.getPlayer(playerName));
     }
 
     public void flush() {

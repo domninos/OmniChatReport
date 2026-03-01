@@ -30,12 +30,9 @@ public class MuteCommand implements CommandExecutor {
         if (args.length < 3)
             return sendHelp(sender);
         else {
-            Player target = Bukkit.getPlayer(args[0]);
+            String targetName = args[0];
 
-            if (target == null) {
-                plugin.sendMessage(sender, "&cPlayer '" + args[1] + "' not found.");
-                return true;
-            }
+            Player target = Bukkit.getPlayer(targetName);
 
             String timeString = args[1];
 
@@ -46,16 +43,24 @@ public class MuteCommand implements CommandExecutor {
 
             String reason = builder.toString().trim();
 
-            if (plugin.getMuteManager().mutePlayer(sender.getName(), target, timeString, reason)) {
-                long timeMillis = TimeUtil.parseDuration(timeString);
-                String formattedTime = TimeUtil.getTimeRemainingString(timeMillis);
+            long timeMillis = TimeUtil.parseDuration(timeString);
+            String formattedTime = TimeUtil.getTimeRemainingString(timeMillis);
 
-                plugin.sendMessage(sender, "&aSuccessfully muted " + target.getName()
-                        + " for " + reason + ". Duration: " + formattedTime);
+            if (target == null) {
+                plugin.sendMessage(sender, "&cPlayer '" + targetName + "' not found. Trying on another server...");
 
-                // broadcast
-                plugin.sendMessage(target, "&cYou have been muted by " + sender.getName() + " for " + formattedTime + ".");
-                plugin.sendMessage(target, "&cReason: " + reason);
+                plugin.getRedisHandler().publishMute(sender.getName(), targetName, timeMillis, reason, plugin.checkServer());
+            } else {
+                plugin.getMuteManager().mutePlayer(sender.getName(), target, plugin.checkServer(), timeString, reason).thenAccept(success -> {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        plugin.sendMessage(sender, "&aSuccessfully muted " + target.getName()
+                                + " for " + reason + ". Duration: " + formattedTime);
+
+                        // broadcast
+                        plugin.sendMessage(target, "&cYou have been muted by " + sender.getName() + " for " + formattedTime + ".");
+                        plugin.sendMessage(target, "&cReason: " + reason);
+                    });
+                });
             }
         }
 

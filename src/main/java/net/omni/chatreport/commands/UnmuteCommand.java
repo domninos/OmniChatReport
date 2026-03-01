@@ -38,13 +38,22 @@ public class UnmuteCommand implements CommandExecutor {
                 return true;
             }
 
-            if (!plugin.getMuteManager().isMuted(target)) {
-                plugin.sendMessage(sender, "&c" + target.getName() + " is not muted.");
-                return true;
-            }
+            plugin.getMuteManager().isMuted(target).thenAccept(isMuted -> {
+                if (!isMuted) {
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            plugin.sendMessage(sender, "&c" + target.getName() + " is not muted.")
+                    );
+                    return;
+                }
 
-            plugin.getMuteManager().unmutePlayer(target);
-            plugin.sendMessage(target, "&aYou are now unmuted.");
+                plugin.getMuteManager().unmutePlayer(target.getName());
+
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    plugin.sendMessage(target, "&aYou are now unmuted.");
+                    plugin.sendMessage(sender, "&a" + target.getName() + " has been unmuted.");
+                });
+
+            });
         } else
             sendHelp(sender);
 

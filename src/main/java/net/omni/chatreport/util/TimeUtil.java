@@ -3,8 +3,11 @@ package net.omni.chatreport.util;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class TimeUtil {
+    private static final Pattern PATTERN = Pattern.compile("(\\d+)([a-z]+)");
 
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-HH-dd HH:mm:ss")
@@ -22,6 +25,12 @@ public class TimeUtil {
 
         long seconds = remaining / 1000;
 
+        long years = seconds / (365L * 24 * 3600);
+        seconds %= (365L * 24 * 3600);
+
+        long months = seconds / (30L * 24 * 3600);
+        seconds %= (30L * 24 * 3600);
+
         long weeks = seconds / (7 * 24 * 3600);
         seconds %= (7 * 24 * 3600);
 
@@ -36,11 +45,13 @@ public class TimeUtil {
 
         StringBuilder result = new StringBuilder();
 
-        if (weeks > 0) result.append(weeks).append(" week(s) ");
-        if (days > 0) result.append(days).append(" day(s) ");
-        if (hours > 0) result.append(hours).append(" hour(s) ");
-        if (minutes > 0) result.append(minutes).append(" minute(s) ");
-        if (seconds > 0) result.append(seconds).append(" second(s) ");
+        appendTime(result, years, "year");
+        appendTime(result, months, "month");
+        appendTime(result, weeks, "week");
+        appendTime(result, days, "day");
+        appendTime(result, hours, "hour");
+        appendTime(result, minutes, "minute");
+        appendTime(result, seconds, "second");
 
         if (result.isEmpty())
             result.append("-");
@@ -48,50 +59,57 @@ public class TimeUtil {
         return result.toString().trim();
     }
 
+    private static void appendTime(StringBuilder sb, long value, String unit) {
+        if (value > 0) {
+            sb.append(value)
+                    .append(" ")
+                    .append(unit)
+                    .append(value == 1 ? " " : "s ");
+        }
+    }
+
     public static long parseDuration(String input) {
         if (input == null || input.isEmpty())
             throw new IllegalArgumentException("Time cannot be empty");
 
         input = input.toLowerCase();
-
         long totalMillis = System.currentTimeMillis();
-        StringBuilder number = new StringBuilder();
 
-        for (char c : input.toCharArray()) {
-            if (Character.isDigit(c)) {
-                number.append(c);
-            } else {
-                if (number.isEmpty())
-                    throw new IllegalArgumentException("Invalid time format");
+        Matcher matcher = PATTERN.matcher(input);
 
-                long value = Long.parseLong(number.toString());
-                number.setLength(0);
+        while (matcher.find()) {
+            long value = Long.parseLong(matcher.group(1));
+            String unit = matcher.group(2);
 
-                switch (c) {
-                    case 's':
-                        totalMillis += value * 1000L;
-                        break;
-                    case 'm':
-                        totalMillis += value * 60_000L;
-                        break;
-                    case 'h':
-                        totalMillis += value * 3_600_000L;
-                        break;
-                    case 'd':
-                        totalMillis += value * 86_400_000L;
-                        break;
-                    case 'w':
-                        totalMillis += value + 604_800_000L;
-                        break;
-                    default:
-                        throw new IllegalArgumentException("Unknown time unit: " + c
-                                + " | Supported: s - seconds, m - minutes, h - hour, d - day, w - week");
-                }
+            switch (unit) {
+                case "s":
+                    totalMillis += value * 1_000L;
+                    break;
+                case "m":
+                    totalMillis += value * 60_000L;
+                    break;
+                case "h":
+                    totalMillis += value * 3_600_000L;
+                    break;
+                case "d":
+                    totalMillis += value * 86_400_000L;
+                    break;
+                case "w":
+                    totalMillis += value * 604_800_000L;
+                    break;
+                case "mo":
+                    totalMillis += value * 2_592_000_000L; // 30 days
+                    break;
+                case "y":
+                    totalMillis += value * 31_536_000_000L; // 365 days
+                    break;
+                default:
+                    throw new IllegalArgumentException(
+                            "Unknown time unit: " + unit +
+                                    " | Supported: s, m, h, d, w, mo, y"
+                    );
             }
         }
-
-        if (!number.isEmpty() || totalMillis == 0)
-            totalMillis = Long.parseLong(number.toString());
 
         return totalMillis;
     }

@@ -9,6 +9,7 @@ import net.omni.chatreport.listeners.GUIListener;
 import net.omni.chatreport.listeners.PlayerListener;
 import net.omni.chatreport.managers.GUIManager;
 import net.omni.chatreport.managers.MuteManager;
+import net.omni.chatreport.managers.SaveManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
@@ -27,10 +28,12 @@ public final class OmniChatReport extends JavaPlugin {
 
     private RedisHandler redisHandler;
 
-    // TODO save cache to database batchUpdate
+    private SaveManager saveManager;
 
     @Override
     public void onDisable() {
+        saveManager.saveAllDisable();
+
         databaseHandler.closeDB();
 
         if (useRedis())
@@ -39,7 +42,9 @@ public final class OmniChatReport extends JavaPlugin {
         guiManager.flush();
         muteManager.flush();
 
-        sendConsole("&cSuccessfully disabled " + getName() + "v-" + getDescription().getVersion());
+        saveManager.flush();
+
+        sendConsole("&cSuccessfully disabled " + getName() + " v-" + getDescription().getVersion());
     }
 
     @Override
@@ -66,6 +71,9 @@ public final class OmniChatReport extends JavaPlugin {
             this.redisHandler = new RedisHandler(this);
 
         muteManager = new MuteManager(this);
+
+        saveManager = new SaveManager(this);
+        saveManager.startPool();
 
         sendConsole("&aSuccessfully enabled " + getName() + " v-" + getDescription().getVersion());
     }
@@ -111,6 +119,10 @@ public final class OmniChatReport extends JavaPlugin {
 
     public DatabaseHandler getDatabaseHandler() {
         return databaseHandler;
+    }
+
+    public SaveManager getSaveManager() {
+        return saveManager;
     }
 
     public String checkServer() {

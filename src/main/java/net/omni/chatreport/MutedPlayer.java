@@ -3,10 +3,10 @@ package net.omni.chatreport;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
-public record MutedPlayer(String issuer, String playerName, long expiry, String reason) {
+public record MutedPlayer(String issuer, String playerName, long expiry, String reason, String fromServer) {
 
-    public MutedPlayer(String issuer, Player playerName, long expiry, String reason) {
-        this(issuer, playerName.getName(), expiry, reason);
+    public String getFromServer() {
+        return fromServer;
     }
 
     public String getIssuer() {

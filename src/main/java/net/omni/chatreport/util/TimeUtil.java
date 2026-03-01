@@ -1,21 +1,10 @@
 package net.omni.chatreport.util;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class TimeUtil {
     private static final Pattern PATTERN = Pattern.compile("(\\d+)([a-z]+)");
-
-    private static final DateTimeFormatter FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-HH-dd HH:mm:ss")
-                    .withZone(ZoneId.systemDefault());
-
-    public static String format(long timeMillis) {
-        return FORMATTER.format(Instant.ofEpochMilli(timeMillis));
-    }
 
     public static String getTimeRemainingString(long timeMillis) {
         long remaining = timeMillis - System.currentTimeMillis();
@@ -73,7 +62,16 @@ public class TimeUtil {
             throw new IllegalArgumentException("Time cannot be empty");
 
         input = input.toLowerCase();
-        long totalMillis = System.currentTimeMillis();
+
+        if (input.matches("\\d+")) {
+            long timestamp = Long.parseLong(input);
+            if (timestamp > System.currentTimeMillis())
+                return timestamp;
+            else
+                throw new IllegalArgumentException("Timestamp is in the past: " + input);
+        }
+
+        long totalMillis = 0;
 
         Matcher matcher = PATTERN.matcher(input);
 
@@ -110,6 +108,11 @@ public class TimeUtil {
                     );
             }
         }
+
+        if (totalMillis != 0)
+            totalMillis += System.currentTimeMillis();
+        else
+            throw new IllegalArgumentException("Could not parse time duration from: " + input);
 
         return totalMillis;
     }

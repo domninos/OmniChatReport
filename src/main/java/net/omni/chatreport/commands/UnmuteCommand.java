@@ -34,25 +34,22 @@ public class UnmuteCommand implements CommandExecutor {
             Player target = Bukkit.getPlayer(args[0]);
 
             if (target == null || !target.isOnline()) {
-                plugin.sendMessage(sender, "&cPlayer not found.");
+                plugin.sendMessage(sender, "&cPlayer not found. Trying on another server..");
+                plugin.getRedisHandler().publishUnmute(args[0], plugin.checkServer());
                 return true;
             }
 
             plugin.getMuteManager().isMuted(target).thenAccept(isMuted -> {
                 if (!isMuted) {
                     Bukkit.getScheduler().runTask(plugin, () ->
-                            plugin.sendMessage(sender, "&c" + target.getName() + " is not muted.")
-                    );
+                            plugin.sendMessage(sender, "&c" + target.getName() + " is not muted."));
                     return;
                 }
 
-                plugin.getMuteManager().unmutePlayer(target.getName());
-
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.getMuteManager().unmutePlayer(target.getName()).thenAccept(isUnmuted -> Bukkit.getScheduler().runTask(plugin, () -> {
                     plugin.sendMessage(target, "&aYou are now unmuted.");
                     plugin.sendMessage(sender, "&a" + target.getName() + " has been unmuted.");
-                });
-
+                }));
             });
         } else
             sendHelp(sender);

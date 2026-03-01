@@ -46,14 +46,15 @@ public class PlayerListener implements Listener {
             if (!isMuted)
                 return;
 
-            Bukkit.getScheduler().runTask(plugin, () -> event.setCancelled(true));
+            event.setCancelled(true);
 
             plugin.getMuteManager().getTimeLeft(player).thenAccept(time -> {
                 if (!(time <= 0))
                     Bukkit.getScheduler().runTask(plugin, () -> plugin.sendMessage(player, "&cYou are currently muted. Remaining: "
                             + TimeUtil.getTimeRemainingString(time)));
                 else
-                    plugin.getMuteManager().unmutePlayer(player.getName());
+                    plugin.getMuteManager().unmutePlayer(player.getName()).thenAccept(isUnmuted ->
+                            Bukkit.getScheduler().runTask(plugin, () -> plugin.sendMessage(player, "&aYou are now unmuted.")));
             });
         });
     }

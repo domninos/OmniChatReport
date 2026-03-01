@@ -39,7 +39,7 @@ public class MuteManager {
 
             // check if redis
             if (plugin.useRedis())
-                plugin.getRedisHandler().mutePlayer(issuer, name, millisTime, reason, server);
+                plugin.getRedisHandler().mutePlayer(issuer, name, millisTime, reason, server, false);
 
             result.clear(); // flush
         });
@@ -55,28 +55,17 @@ public class MuteManager {
             return CompletableFuture.completedFuture(false);
         }
 
-        return mutePlayerServer(issuer, player.getName(), server, millisTime, reason, false, false);
+        return mutePlayerServer(issuer, player.getName(), server, millisTime, reason, false, false, true);
     }
 
-    public CompletableFuture<Boolean> mutePlayerServer(String issuer,
-                                                       String playerName,
-                                                       String server,
-                                                       long millisTime,
-                                                       String reason,
-                                                       boolean fromAnother,
-                                                       boolean onJoin) {
-
+    public CompletableFuture<Boolean> mutePlayerServer(String issuer, String playerName, String server, long millisTime, String reason, boolean fromAnother, boolean onJoin, boolean publish) {
         Player player = Bukkit.getPlayer(playerName);
 
-        if (fromAnother && (player == null || !player.isOnline())) {
-            plugin.sendConsole("&cCould not mute player because player is not found.");
+        if (!fromAnother && (player == null || !player.isOnline()))
             return CompletableFuture.completedFuture(false);
-        }
 
         return isMuted(player).thenApply(isMuted -> {
-
             if (isMuted && !onJoin) {
-
                 Player issuerPlayer = Bukkit.getPlayer(issuer);
 
                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -94,7 +83,7 @@ public class MuteManager {
             PLAYER_MAP.put(playerName, mutedPlayer);
 
             if (plugin.useRedis())
-                plugin.getRedisHandler().mutePlayer(issuer, playerName, millisTime, reason, server);
+                plugin.getRedisHandler().mutePlayer(issuer, playerName, millisTime, reason, server, publish);
 
             plugin.getSaveManager().addToPool(mutedPlayer);
 
@@ -109,25 +98,15 @@ public class MuteManager {
         if (PLAYER_MAP.containsKey(player.getName()))
             return CompletableFuture.completedFuture(true);
 
-        if (plugin.useRedis()) {
-            boolean redisMuted = plugin.getRedisHandler().isMuted(player.getName());
+        if (plugin.useRedis())
+            return CompletableFuture.completedFuture(plugin.getRedisHandler().isMuted(player.getName()));
 
-            if (redisMuted)
-                return CompletableFuture.completedFuture(true);
-        }
-
-        // MySQL async
         return plugin.getDatabaseHandler().exists(player.getName());
     }
 
-    public CompletableFuture<Boolean> mutePlayer(String issuer,
-                                                 String playerName,
-                                                 String server,
-                                                 String timeString,
-                                                 String reason,
-                                                 boolean fromAnother) {
-
+    public CompletableFuture<Boolean> mutePlayer(String issuer, String playerName, String server, String timeString, String reason, boolean fromAnother, boolean publish) {
         long millisTime;
+
         try {
             millisTime = TimeUtil.parseDuration(timeString);
         } catch (Exception e) {
@@ -135,8 +114,7 @@ public class MuteManager {
             return CompletableFuture.completedFuture(false);
         }
 
-        // call the async version of mutePlayerServer
-        return mutePlayerServer(issuer, playerName, server, millisTime, reason, fromAnother, false);
+        return mutePlayerServer(issuer, playerName, server, millisTime, reason, fromAnother, false, publish);
     }
 
     public void saveToDatabase(Player player) {
@@ -154,8 +132,10 @@ public class MuteManager {
 
     public CompletableFuture<Long> getTimeLeft(Player player) {
         return isMuted(player).thenApply(isMuted -> {
-            if (!isMuted)
+            if (!isMuted) {
+                plugin.sendConsole("not muted");
                 return 0L;
+            }
 
             MutedPlayer mutedPlayer = PLAYER_MAP.get(player.getName());
 
@@ -166,26 +146,34 @@ public class MuteManager {
         });
     }
 
-    public void unmutePlayer(String playerName) {
-        if (!PLAYER_MAP.containsKey(playerName))
-            return;
-
-        plugin.getSaveManager().removeFromPool(playerName);
-
-        MutedPlayer mutedPlayer = PLAYER_MAP.remove(playerName);
-
-        if (plugin.useRedis())
-            plugin.getRedisHandler().unmute(playerName, mutedPlayer.getFromServer());
-
-        plugin.getDatabaseHandler().delete(playerName); // async already
+    public CompletableFuture<Boolean> unmutePlayer(String playerName) {
+        return unmutePlayer(playerName, true);
     }
 
-    public MutedPlayer getMutedPlayer(String playerName) {
-        return PLAYER_MAP.get(playerName);
+    public CompletableFuture<Boolean> unmutePlayer(String playerName, boolean publish) {
+        return isMuted(playerName).thenApply(isMuted -> {
+            if (!isMuted)
+                return false;
+
+            plugin.getSaveManager().removeFromPool(playerName);
+
+            MutedPlayer mutedPlayer = PLAYER_MAP.remove(playerName);
+
+            if (plugin.useRedis())
+                plugin.getRedisHandler().unmute(playerName, mutedPlayer.getFromServer(), publish);
+
+            plugin.getDatabaseHandler().delete(playerName); // async already
+
+            return true;
+        });
     }
 
     public CompletableFuture<Boolean> isMuted(String playerName) {
         return isMuted(Bukkit.getPlayer(playerName));
+    }
+
+    public MutedPlayer getMutedPlayer(String playerName) {
+        return PLAYER_MAP.get(playerName);
     }
 
     public void flush() {
